@@ -1,0 +1,62 @@
+# ==========================================
+# Unity Standard .gitignore
+# ==========================================
+
+# Direktori cache dan temporary Unity
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# Asset store tools
+/AssetStoreTools*
+
+# File Project & Solution Visual Studio / Rider (Dibuat otomatis oleh Unity)
+ExportedObj/
+.consulo/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Metadata untuk file yang di-ignore
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Visual Studio / VS Code / JetBrains cache
+.vs/
+.idea/
+.vscode/
+
+# Build Artefak
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# Crash reports
+sysinfo.txt
+crashlytics-build.properties
+
+# OS Junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+PRD - Game Balap Lari 3D dengan Sistem Coin.md
