@@ -7,6 +7,8 @@ using GameBalap.Gameplay.AI;
 using GameBalap.Gameplay.Race;
 using GameBalap.Social;
 using GameBalap.UI;
+using GameBalap.Audio;
+using GameBalap.Customization;
 
 namespace GameBalap.Core
 {
@@ -24,11 +26,13 @@ namespace GameBalap.Core
         {
             Debug.Log("<color=#00FFAA><b>[GameInitializer] Menginisialisasi Game Balap Lari 3D Prototipe...</b></color>");
 
-            // 1. Inisialisasi Service Otoritatif & Ekonomi
+            // 1. Inisialisasi Service Otoritatif, Audio & Ekonomi
+            EnsureComponent<AudioManager>("AudioManager");
             EnsureComponent<WalletManager>("WalletManager");
             EnsureComponent<AccountManager>("AccountManager");
             EnsureComponent<RaceValidationService>("RaceValidationService");
             EnsureComponent<LeaderboardManager>("LeaderboardManager");
+            EnsureComponent<ShopManager>("ShopManager");
 
             // 2. Inisialisasi Pencahayaan jika belum ada
             if (autoSetupLightAndCamera)
@@ -36,7 +40,8 @@ namespace GameBalap.Core
                 SetupLightingAndCamera();
             }
 
-            // 3. Inisialisasi Gameplay & Track
+            // 3. Inisialisasi Gameplay, Track & Tema
+            EnsureComponent<TrackThemeManager>("TrackThemeManager");
             var trackGen = EnsureComponent<TrackGenerator>("TrackGenerator");
             var player = EnsureComponent<PlayerController>("PlayerRunner");
             player.gameObject.tag = "Player";

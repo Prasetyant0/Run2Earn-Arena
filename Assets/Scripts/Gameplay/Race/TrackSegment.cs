@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using GameBalap.Core;
+using GameBalap.Gameplay.PowerUps;
 
 namespace GameBalap.Gameplay.Race
 {
@@ -11,6 +12,9 @@ namespace GameBalap.Gameplay.Race
         [SerializeField] private Transform obstacleContainer;
 
         private readonly List<Obstacle> spawnedObstacles = new List<Obstacle>();
+        private readonly List<MovingObstacle> spawnedMovingObstacles = new List<MovingObstacle>();
+        private readonly List<TrackCoin> spawnedCoins = new List<TrackCoin>();
+        private readonly List<PowerUpItem> spawnedPowerUps = new List<PowerUpItem>();
 
         public void InitializeSegment(int segmentIndex, bool isFinishSegment, bool isStartSegment)
         {
@@ -27,21 +31,99 @@ namespace GameBalap.Gameplay.Race
                 return;
             }
 
-            GenerateProceduralObstacles(segmentIndex);
+            GenerateProceduralContent(segmentIndex);
         }
 
-        private void GenerateProceduralObstacles(int segmentIndex)
+        private void GenerateProceduralContent(int segmentIndex)
         {
-            // Tentukan pola obstacle per segmen
+            // 1. Spawning Rintangan Statis
             int obstacleCount = Random.Range(1, 3);
+            HashSet<int> occupiedLanes = new HashSet<int>();
+
             for (int i = 0; i < obstacleCount; i++)
             {
                 float zOffset = 8f + (i * 12f);
                 Lane lane = (Lane)Random.Range(-1, 2);
-                ObstacleType type = (ObstacleType)Random.Range(0, 3);
+                occupiedLanes.Add((int)lane);
 
+                // Hindari memblokir semua 3 jalur pada jarak z yang sama
+                ObstacleType type = (ObstacleType)Random.Range(0, 3);
                 SpawnObstacle(type, lane, zOffset);
             }
+
+            // 2. Spawning Rintangan Bergerak Dinamis (Mulai dari segmen ke-2 dan seterusnya)
+            if (segmentIndex >= 2 && Random.value < 0.45f)
+            {
+                SpawnMovingObstacle(16f, Random.Range(1.6f, 2.4f), Random.Range(0f, Mathf.PI));
+            }
+
+            // 3. Spawning Koin Lintasan (Track Coins) dalam formasi baris 3-5 koin
+            SpawnCoinPattern(segmentIndex);
+
+            // 4. Spawning Power-Up Item acak (SpeedBoost, Shield, CoinMagnet)
+            if (Random.value < 0.5f)
+            {
+                Lane freeLane = (Lane)Random.Range(-1, 2);
+                PowerUpType powerType = (PowerUpType)Random.Range(0, 3);
+                SpawnPowerUp(powerType, freeLane, 14f);
+            }
+        }
+
+        private void SpawnCoinPattern(int segmentIndex)
+        {
+            Lane coinLane = (Lane)Random.Range(-1, 2);
+            int patternType = Random.Range(0, 2); // 0 = straight line, 1 = mini arc
+
+            int coinCount = Random.Range(3, 6);
+            float startZ = 6f;
+
+            for (int i = 0; i < coinCount; i++)
+            {
+                float zPos = startZ + (i * 2.5f);
+                float yPos = 0.8f;
+
+                if (patternType == 1)
+                {
+                    // Lengkungan melompat parabola
+                    float normalized = (float)i / (coinCount - 1);
+                    yPos = 0.8f + Mathf.Sin(normalized * Mathf.PI) * 1.4f;
+                }
+
+                SpawnCoin(coinLane, zPos, yPos);
+            }
+        }
+
+        public TrackCoin SpawnCoin(Lane lane, float localZ, float height = 0.8f)
+        {
+            GameObject coinObj = new GameObject($"TrackCoin_{lane}_{localZ:F0}");
+            coinObj.transform.SetParent(obstacleContainer, false);
+
+            TrackCoin coin = coinObj.AddComponent<TrackCoin>();
+            coin.Initialize(lane, localZ, height);
+            spawnedCoins.Add(coin);
+            return coin;
+        }
+
+        public PowerUpItem SpawnPowerUp(PowerUpType type, Lane lane, float localZ)
+        {
+            GameObject powerObj = new GameObject($"PowerUp_{type}_{lane}");
+            powerObj.transform.SetParent(obstacleContainer, false);
+
+            PowerUpItem item = powerObj.AddComponent<PowerUpItem>();
+            item.Initialize(type, lane, localZ);
+            spawnedPowerUps.Add(item);
+            return item;
+        }
+
+        public MovingObstacle SpawnMovingObstacle(float localZ, float speed, float phase)
+        {
+            GameObject movingObj = new GameObject($"MovingObstacle_{localZ:F0}");
+            movingObj.transform.SetParent(obstacleContainer, false);
+
+            MovingObstacle moving = movingObj.AddComponent<MovingObstacle>();
+            moving.Initialize(localZ, speed, phase);
+            spawnedMovingObstacles.Add(moving);
+            return moving;
         }
 
         public Obstacle SpawnObstacle(ObstacleType type, Lane lane, float localZ)
@@ -110,6 +192,9 @@ namespace GameBalap.Gameplay.Race
         {
             Material metalMat = new Material(Shader.Find("Standard")) { color = new Color(0.25f, 0.28f, 0.32f) };
             Material neonHazardMat = new Material(Shader.Find("Standard")) { color = new Color(1.0f, 0.75f, 0.05f) };
+            neonHazardMat.EnableKeyword("_EMISSION");
+            neonHazardMat.SetColor("_EmissionColor", new Color(1.0f, 0.75f, 0.05f) * 2.4f);
+
             Material darkStripeMat = new Material(Shader.Find("Standard")) { color = new Color(0.1f, 0.1f, 0.12f) };
 
             // 1. Kaki Tiang Kiri & Kanan di Tanah
@@ -120,7 +205,7 @@ namespace GameBalap.Gameplay.Race
             CreateSubPart(parent, "PoleLeft", new Vector3(-0.85f, 0.45f, 0), new Vector3(0.12f, 0.8f, 0.12f), metalMat);
             CreateSubPart(parent, "PoleRight", new Vector3(0.85f, 0.45f, 0), new Vector3(0.12f, 0.8f, 0.12f), metalMat);
 
-            // 3. Palang Utama Rintangan
+            // 3. Palang Utama Rintangan Emissive
             CreateSubPart(parent, "HurdleBar", new Vector3(0, 0.65f, 0), new Vector3(1.85f, 0.32f, 0.18f), neonHazardMat);
 
             // Strip Belang Hitam di Palang
@@ -138,7 +223,12 @@ namespace GameBalap.Gameplay.Race
         {
             Material pillarMat = new Material(Shader.Find("Standard")) { color = new Color(0.22f, 0.24f, 0.28f) };
             Material warnRedMat = new Material(Shader.Find("Standard")) { color = new Color(0.95f, 0.18f, 0.18f) };
+            warnRedMat.EnableKeyword("_EMISSION");
+            warnRedMat.SetColor("_EmissionColor", new Color(0.95f, 0.18f, 0.18f) * 2.5f);
+
             Material yellowLightMat = new Material(Shader.Find("Standard")) { color = new Color(1.0f, 0.9f, 0.1f) };
+            yellowLightMat.EnableKeyword("_EMISSION");
+            yellowLightMat.SetColor("_EmissionColor", new Color(1.0f, 0.9f, 0.1f) * 3.0f);
 
             // 1. Tiang Penyangga Tinggi Kiri & Kanan
             CreateSubPart(parent, "GantryLeft", new Vector3(-0.9f, 1.25f, 0), new Vector3(0.18f, 2.5f, 0.25f), pillarMat);
@@ -162,8 +252,13 @@ namespace GameBalap.Gameplay.Race
         {
             Material concreteMat = new Material(Shader.Find("Standard")) { color = new Color(0.35f, 0.36f, 0.38f) };
             Material hazardYellowMat = new Material(Shader.Find("Standard")) { color = new Color(0.95f, 0.8f, 0.05f) };
+            hazardYellowMat.EnableKeyword("_EMISSION");
+            hazardYellowMat.SetColor("_EmissionColor", new Color(0.95f, 0.8f, 0.05f) * 1.6f);
+
             Material darkHazardMat = new Material(Shader.Find("Standard")) { color = new Color(0.12f, 0.12f, 0.14f) };
             Material amberBeaconMat = new Material(Shader.Find("Standard")) { color = new Color(1.0f, 0.55f, 0.05f) };
+            amberBeaconMat.EnableKeyword("_EMISSION");
+            amberBeaconMat.SetColor("_EmissionColor", new Color(1.0f, 0.55f, 0.05f) * 3.2f);
 
             // 1. Fondasi Beton Bawah Lebar
             CreateSubPart(parent, "ConcreteBase", new Vector3(0, 0.35f, 0), new Vector3(1.85f, 0.7f, 0.65f), concreteMat);
@@ -201,6 +296,24 @@ namespace GameBalap.Gameplay.Race
                 if (obs != null) Destroy(obs.gameObject);
             }
             spawnedObstacles.Clear();
+
+            foreach (var moving in spawnedMovingObstacles)
+            {
+                if (moving != null) Destroy(moving.gameObject);
+            }
+            spawnedMovingObstacles.Clear();
+
+            foreach (var coin in spawnedCoins)
+            {
+                if (coin != null) Destroy(coin.gameObject);
+            }
+            spawnedCoins.Clear();
+
+            foreach (var power in spawnedPowerUps)
+            {
+                if (power != null) Destroy(power.gameObject);
+            }
+            spawnedPowerUps.Clear();
         }
     }
 }

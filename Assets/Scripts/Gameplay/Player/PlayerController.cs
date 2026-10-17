@@ -3,6 +3,9 @@ using System.Collections;
 using UnityEngine;
 using GameBalap.Core;
 using GameBalap.Gameplay.Race;
+using GameBalap.Gameplay.PowerUps;
+using GameBalap.Customization;
+using GameBalap.Audio;
 
 namespace GameBalap.Gameplay.Player
 {
@@ -25,6 +28,8 @@ namespace GameBalap.Gameplay.Player
         private CharacterController characterController;
         private SwipeInputHandler inputHandler;
         private BlockyCharacterAnimator characterAnimator;
+        private RunnerParticleEffects particleEffects;
+        private PlayerPowerUpManager powerUpManager;
         private float verticalVelocity = 0f;
         private bool isRacing = false;
         private Coroutine slideCoroutine;
@@ -40,6 +45,7 @@ namespace GameBalap.Gameplay.Player
         public float CurrentSpeed => currentSpeed;
         public CharacterMovementState CurrentState => currentState;
         public Lane CurrentLane => currentLane;
+        public PlayerPowerUpManager PowerUpManager => powerUpManager;
 
         // Events
         public event Action<CharacterMovementState> OnStateChanged;
@@ -68,6 +74,20 @@ namespace GameBalap.Gameplay.Player
                 characterAnimator = gameObject.AddComponent<BlockyCharacterAnimator>();
             }
             characterAnimator.SetupCharacter(asRival: false);
+
+            // Pasang efek partikel (debu, slide sparks, speed lines, hit)
+            particleEffects = GetComponent<RunnerParticleEffects>();
+            if (particleEffects == null)
+            {
+                particleEffects = gameObject.AddComponent<RunnerParticleEffects>();
+            }
+
+            // Pasang manager power-up
+            powerUpManager = GetComponent<PlayerPowerUpManager>();
+            if (powerUpManager == null)
+            {
+                powerUpManager = gameObject.AddComponent<PlayerPowerUpManager>();
+            }
         }
 
         private void OnEnable()
@@ -126,14 +146,21 @@ namespace GameBalap.Gameplay.Player
                 return;
             }
 
-            // Akselerasi kecepatan lari
-            if (currentSpeed < maxSpeed && currentState != CharacterMovementState.Stumbled)
+            // Akselerasi kecepatan lari dengan bonus upgrade toko
+            float maxSpeedMult = ShopManager.Instance != null ? ShopManager.Instance.GetStatMultiplier(StatUpgradeType.MaxSpeed) : 1.0f;
+            float effectiveMaxSpeed = maxSpeed * maxSpeedMult;
+
+            float accelMult = ShopManager.Instance != null ? ShopManager.Instance.GetStatMultiplier(StatUpgradeType.Acceleration) : 1.0f;
+            float effectiveAccel = acceleration * accelMult;
+
+            if (currentSpeed < effectiveMaxSpeed && currentState != CharacterMovementState.Stumbled)
             {
-                currentSpeed += acceleration * Time.deltaTime;
+                currentSpeed += effectiveAccel * Time.deltaTime;
             }
 
-            // Pergerakan Maju
-            Vector3 moveVector = Vector3.forward * currentSpeed;
+            // Pergerakan Maju dengan pengganda Speed Boost (jika aktif)
+            float effectiveSpeed = currentSpeed * (powerUpManager != null ? powerUpManager.SpeedBoostMultiplier : 1.0f);
+            Vector3 moveVector = Vector3.forward * effectiveSpeed;
 
             // Hitung perpindahan horizontal ke jalur target
             float targetX = (int)currentLane * GameConstants.LANE_WIDTH;
@@ -158,8 +185,11 @@ namespace GameBalap.Gameplay.Player
             moveVector.y = verticalVelocity;
             characterController.Move(moveVector * Time.deltaTime);
 
-            // Update animasi anggota tubuh karakter
-            characterAnimator?.UpdateAnimation(currentState, currentSpeed);
+            // Update animasi dinamis anggota tubuh karakter (termasuk kemiringan badan saat belok)
+            characterAnimator?.UpdateAnimation(currentState, currentSpeed, moveVector.x);
+
+            // Update efek partikel (debu lari, percikan slide, speed lines)
+            particleEffects?.UpdateEffects(currentState, currentSpeed, characterController.isGrounded);
         }
 
         public void StartRacing()
@@ -184,6 +214,7 @@ namespace GameBalap.Gameplay.Player
             currentSpeed = 0f;
             verticalVelocity = 0f;
             CollisionCount = 0;
+            powerUpManager?.ResetAll();
             characterController.enabled = true;
             SetState(CharacterMovementState.Running);
             characterAnimator?.UpdateAnimation(currentState, 0f);
@@ -211,6 +242,7 @@ namespace GameBalap.Gameplay.Player
             {
                 verticalVelocity = jumpForce;
                 SetState(CharacterMovementState.Jumping);
+                AudioManager.Instance?.PlayJump();
             }
         }
 
@@ -226,6 +258,7 @@ namespace GameBalap.Gameplay.Player
 
             if (slideCoroutine != null) StopCoroutine(slideCoroutine);
             slideCoroutine = StartCoroutine(SlideRoutine());
+            AudioManager.Instance?.PlaySlide();
         }
 
         private IEnumerator SlideRoutine()
@@ -253,8 +286,17 @@ namespace GameBalap.Gameplay.Player
         {
             if (currentState == CharacterMovementState.Finished) return;
 
+            // Jika perisai energi atau speed boost menyerap tabrakan
+            if (powerUpManager != null && powerUpManager.TryAbsorbCollision())
+            {
+                return;
+            }
+
             CollisionCount++;
             Debug.LogWarning($"[PlayerController] Menabrak rintangan {obstacle.Type}! Total tabrakan: {CollisionCount}");
+
+            particleEffects?.PlayHitEffect();
+            AudioManager.Instance?.PlayHit();
 
             if (stumbleCoroutine != null) StopCoroutine(stumbleCoroutine);
             stumbleCoroutine = StartCoroutine(StumbleRoutine());

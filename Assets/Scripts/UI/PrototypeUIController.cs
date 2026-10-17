@@ -5,29 +5,49 @@ using GameBalap.Economy;
 using GameBalap.Auth;
 using GameBalap.Gameplay.Race;
 using GameBalap.Gameplay.Player;
+using GameBalap.Gameplay.PowerUps;
 using GameBalap.Social;
+using GameBalap.Audio;
+using GameBalap.Customization;
 
 namespace GameBalap.UI
 {
     /// <summary>
     /// UI Controller bawaan prototipe yang langsung aktif otomatis di Unity Editor dan Mobile 
     /// tanpa mewajibkan setup Canvas manual yang rumit. 
-    /// Menyediakan antarmuka Lobby, HUD Balapan, Hasil Payout, dan Riwayat Transaksi Koin.
+    /// Menyediakan antarmuka Lobby, HUD Balapan, Status Power-Up, Toko Kustomisasi & Upgrade,
+    /// Hasil Payout, Floating Coin Popups, dan Riwayat Transaksi Koin.
     /// </summary>
     public class PrototypeUIController : MonoBehaviour
     {
-        [Header("State")]
+        private class FloatingCoinText
+        {
+            public string text;
+            public Vector3 worldPos;
+            public float timer;
+            public float maxTime = 1.2f;
+        }
+
+        [Header("Modal States")]
         private bool showHistoryModal = false;
         private bool showLeaderboardModal = false;
+        private bool showShopModal = false;
+        private ShopCategory selectedShopTab = ShopCategory.Skins;
+
         private string alertMessage = "";
         private float alertTimer = 0f;
         private Vector2 historyScrollPos;
         private Vector2 leaderboardScrollPos;
+        private Vector2 shopScrollPos;
+
+        private readonly List<FloatingCoinText> floatingCoins = new List<FloatingCoinText>();
 
         // Cached references
         private RaceManager raceManager;
         private WalletManager walletManager;
         private AccountManager accountManager;
+        private PlayerController player;
+        private PlayerPowerUpManager powerUpManager;
 
         // Result cached data
         private RaceResultData lastResult;
@@ -44,6 +64,7 @@ namespace GameBalap.UI
         private GUIStyle tierBtnStyle;
         private GUIStyle badgeStyle;
         private GUIStyle txItemStyle;
+        private GUIStyle floatingTextStyle;
         private Texture2D cardBgTex;
         private Texture2D darkOverlayTex;
 
@@ -62,6 +83,7 @@ namespace GameBalap.UI
                 raceManager.OnMatchmakingStarted += HandleMatchmakingStarted;
             }
 
+            FindAndHookPlayer();
             InitStyles();
         }
 
@@ -75,6 +97,28 @@ namespace GameBalap.UI
                 raceManager.OnRaceFinished -= HandleRaceFinished;
                 raceManager.OnMatchmakingStarted -= HandleMatchmakingStarted;
             }
+
+            if (powerUpManager != null)
+            {
+                powerUpManager.OnCoinCollected -= HandleCoinCollected;
+            }
+        }
+
+        private void FindAndHookPlayer()
+        {
+            if (player == null)
+            {
+                player = UnityHelper.FindInstance<PlayerController>();
+            }
+
+            if (player != null && powerUpManager == null)
+            {
+                powerUpManager = player.GetComponent<PlayerPowerUpManager>() ?? player.gameObject.AddComponent<PlayerPowerUpManager>();
+                if (powerUpManager != null)
+                {
+                    powerUpManager.OnCoinCollected += HandleCoinCollected;
+                }
+            }
         }
 
         private void Update()
@@ -84,6 +128,32 @@ namespace GameBalap.UI
                 alertTimer -= Time.deltaTime;
                 if (alertTimer <= 0) alertMessage = "";
             }
+
+            // Update & buang popup koin melayang yang sudah expired
+            for (int i = floatingCoins.Count - 1; i >= 0; i--)
+            {
+                floatingCoins[i].timer -= Time.deltaTime;
+                if (floatingCoins[i].timer <= 0f)
+                {
+                    floatingCoins.RemoveAt(i);
+                }
+            }
+
+            if (player == null || powerUpManager == null)
+            {
+                FindAndHookPlayer();
+            }
+        }
+
+        private void HandleCoinCollected(int amount, Vector3 worldPos)
+        {
+            floatingCoins.Add(new FloatingCoinText
+            {
+                text = $"+{amount} 🪙",
+                worldPos = worldPos,
+                timer = 1.2f,
+                maxTime = 1.2f
+            });
         }
 
         private void HandleRaceStateChanged(RaceState state)
@@ -152,34 +222,34 @@ namespace GameBalap.UI
 
             subHeaderStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 14,
+                fontSize = 13,
                 alignment = TextAnchor.MiddleCenter,
-                normal = { textColor = new Color(0.7f, 0.75f, 0.85f) }
+                normal = { textColor = new Color(0.8f, 0.85f, 0.95f) }
             };
 
             cardStyle = new GUIStyle(GUI.skin.box)
             {
-                normal = { background = cardBgTex, textColor = Color.white },
-                padding = new RectOffset(16, 16, 16, 16)
+                padding = new RectOffset(16, 16, 16, 16),
+                normal = { background = cardBgTex }
             };
 
             buttonStyle = new GUIStyle(GUI.skin.button)
             {
                 fontSize = 14,
                 fontStyle = FontStyle.Bold,
-                normal = { textColor = Color.white }
+                alignment = TextAnchor.MiddleCenter
             };
 
             tierBtnStyle = new GUIStyle(GUI.skin.button)
             {
                 fontSize = 15,
                 fontStyle = FontStyle.Bold,
-                normal = { textColor = new Color(1f, 0.9f, 0.3f) }
+                alignment = TextAnchor.MiddleCenter
             };
 
             badgeStyle = new GUIStyle(GUI.skin.box)
             {
-                fontSize = 18,
+                fontSize = 15,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleCenter,
                 normal = { textColor = Color.white }
@@ -188,8 +258,15 @@ namespace GameBalap.UI
             txItemStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 12,
-                wordWrap = true,
-                normal = { textColor = new Color(0.85f, 0.9f, 0.95f) }
+                normal = { textColor = new Color(0.9f, 0.9f, 0.95f) }
+            };
+
+            floatingTextStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 20,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = new Color(1.0f, 0.85f, 0.1f) }
             };
         }
 
@@ -221,7 +298,10 @@ namespace GameBalap.UI
                     break;
             }
 
-            // Modal Riwayat Transaksi (bisa dibuka dari Lobby)
+            // Gambar angka koin melayang
+            DrawFloatingCoins();
+
+            // Modal Riwayat Transaksi
             if (showHistoryModal)
             {
                 DrawTransactionHistoryModal();
@@ -231,6 +311,12 @@ namespace GameBalap.UI
             if (showLeaderboardModal)
             {
                 DrawLeaderboardModal();
+            }
+
+            // Modal Toko Kustomisasi & Upgrade
+            if (showShopModal)
+            {
+                DrawShopModal();
             }
 
             // Pesan Alert Toast
@@ -245,7 +331,7 @@ namespace GameBalap.UI
             int screenW = Screen.width;
             int screenH = Screen.height;
 
-            // 1. Top Bar: Saldo Koin & Profil Pemain
+            // 1. Top Bar: Saldo Koin, Audio Toggle & Profil Pemain
             int topBarH = 65;
             GUI.Box(new Rect(10, 10, screenW - 20, topBarH), "", cardStyle);
 
@@ -254,18 +340,26 @@ namespace GameBalap.UI
             int balance = walletManager != null ? walletManager.CurrentBalance : 0;
             float winRate = accountManager != null ? accountManager.Profile.WinRate : 0f;
 
-            GUI.Label(new Rect(25, 16, 300, 25), $"<b>{userName}</b> (Lv.{userLvl}) | Win Rate: {winRate:F0}%", subHeaderStyle);
-            
+            GUI.Label(new Rect(25, 16, 320, 25), $"<b>{userName}</b> (Lv.{userLvl}) | Win Rate: {winRate:F0}%", subHeaderStyle);
+
+            // Tombol Audio Mute
+            bool isMuted = AudioManager.Instance != null && AudioManager.Instance.IsMuted;
+            string audioIcon = isMuted ? "🔇 Muted" : "🔊 Audio";
+            if (GUI.Button(new Rect(screenW - 350, 18, 90, 38), audioIcon, buttonStyle))
+            {
+                AudioManager.Instance?.ToggleMute();
+            }
+
             // Badge Koin Virtual
             GUI.backgroundColor = new Color(0.9f, 0.75f, 0.1f);
             GUI.Box(new Rect(screenW - 240, 18, 210, 38), $"💰 {balance:N0} COINS", badgeStyle);
             GUI.backgroundColor = Color.white;
 
             // 2. Central Panel: Pilihan Balapan & Tier Masuk
-            float panelW = Mathf.Min(480, screenW - 40);
-            float panelH = 430;
+            float panelW = Mathf.Min(500, screenW - 40);
+            float panelH = 475;
             float panelX = (screenW - panelW) * 0.5f;
-            float panelY = topBarH + 25;
+            float panelY = topBarH + 20;
 
             GUI.Box(new Rect(panelX, panelY, panelW, panelH), "", cardStyle);
 
@@ -273,33 +367,44 @@ namespace GameBalap.UI
             {
                 GUILayout.Label("🏁 ARENA BALAP LARI 3D", headerStyle);
                 GUILayout.Label("Pilih Tier Entry Fee Koin Virtual untuk Bertanding:", subHeaderStyle);
-                GUILayout.Space(12);
+                GUILayout.Space(10);
 
                 // Tier 1: Bronze
-                DrawTierCard(RaceTier.Bronze, "BRONZE TIER", "100", "2.0x", "200 Coins", new Color(0.8f, 0.5f, 0.2f));
-                GUILayout.Space(8);
+                DrawTierCard(RaceTier.Bronze, "BRONZE TIER\n<color=#00FFFF>[Cyberpunk City]</color>", "100", "2.0x", "200 Coins", new Color(0.8f, 0.5f, 0.2f));
+                GUILayout.Space(6);
 
                 // Tier 2: Silver
-                DrawTierCard(RaceTier.Silver, "SILVER TIER", "500", "2.2x", "1,100 Coins", new Color(0.75f, 0.85f, 0.95f));
-                GUILayout.Space(8);
+                DrawTierCard(RaceTier.Silver, "SILVER TIER\n<color=#FFAA00>[Desert Dune]</color>", "500", "2.2x", "1,100 Coins", new Color(0.75f, 0.85f, 0.95f));
+                GUILayout.Space(6);
 
                 // Tier 3: Gold
-                DrawTierCard(RaceTier.Gold, "GOLD TIER", "1,000", "2.5x", "2,500 Coins", new Color(1.0f, 0.8f, 0.2f));
-                GUILayout.Space(15);
+                DrawTierCard(RaceTier.Gold, "GOLD TIER\n<color=#FF4400>[Volcanic Magma]</color>", "1,000", "2.5x", "2,500 Coins", new Color(1.0f, 0.8f, 0.2f));
+                GUILayout.Space(12);
 
-                // Utility buttons
+                // Action Bar (Toko, Riwayat, Leaderboard, Faucet)
                 GUILayout.BeginHorizontal();
                 {
-                    if (GUILayout.Button("📜 Riwayat Koin", buttonStyle, GUILayout.Height(36)))
+                    GUI.backgroundColor = new Color(0.2f, 0.65f, 1.0f);
+                    if (GUILayout.Button("🛒 Toko & Skin", buttonStyle, GUILayout.Height(36)))
                     {
-                        showHistoryModal = true;
+                        showShopModal = true;
+                        showHistoryModal = false;
                         showLeaderboardModal = false;
                     }
 
-                    if (GUILayout.Button("🏆 Leaderboard", buttonStyle, GUILayout.Height(36)))
+                    GUI.backgroundColor = Color.white;
+                    if (GUILayout.Button("📜 Riwayat", buttonStyle, GUILayout.Height(36)))
+                    {
+                        showHistoryModal = true;
+                        showLeaderboardModal = false;
+                        showShopModal = false;
+                    }
+
+                    if (GUILayout.Button("🏆 Peringkat", buttonStyle, GUILayout.Height(36)))
                     {
                         showLeaderboardModal = true;
                         showHistoryModal = false;
+                        showShopModal = false;
                         LeaderboardManager.Instance?.GenerateMockLeaderboard();
                     }
 
@@ -315,7 +420,7 @@ namespace GameBalap.UI
 
                 GUILayout.Space(6);
                 GUI.color = new Color(0.7f, 0.7f, 0.7f);
-                GUILayout.Label("*Versi prototipe riset: Menggunakan mata uang virtual simulasi (tanpa uang riil).", subHeaderStyle);
+                GUILayout.Label("*Versi prototipe: Menggunakan mata uang virtual simulasi (tanpa uang riil).", subHeaderStyle);
                 GUI.color = Color.white;
             }
             GUILayout.EndArea();
@@ -329,11 +434,11 @@ namespace GameBalap.UI
             {
                 GUILayout.BeginHorizontal();
                 {
-                    GUILayout.Label($"<b>{tierTitle}</b>\nEntry: {fee} Coins", GUILayout.Width(180));
-                    GUILayout.Label($"Hadiah: <b>{payout}</b>\n(Pengganda: {mult})", GUILayout.Width(130));
+                    GUILayout.Label($"<b>{tierTitle}</b>", GUILayout.Width(170));
+                    GUILayout.Label($"Entry: <b>{fee}</b>\nMultiplier: <b>{mult}</b>", GUILayout.Width(110));
+                    GUILayout.Label($"Hadiah Juara:\n<b><color=#FFFF00>{payout}</color></b>", GUILayout.Width(110));
 
-                    GUI.backgroundColor = accentCol;
-                    if (GUILayout.Button("TANDING", tierBtnStyle, GUILayout.Width(100), GUILayout.Height(38)))
+                    if (GUILayout.Button("MASUK", tierBtnStyle, GUILayout.Width(75), GUILayout.Height(38)))
                     {
                         if (raceManager != null)
                         {
@@ -343,7 +448,6 @@ namespace GameBalap.UI
                             }
                         }
                     }
-                    GUI.backgroundColor = Color.white;
                 }
                 GUILayout.EndHorizontal();
             }
@@ -403,6 +507,39 @@ namespace GameBalap.UI
             GUI.Box(new Rect(15, 15, 250, 48), rankText, badgeStyle);
             GUI.backgroundColor = Color.white;
 
+            // Koin Terkumpul dalam Balapan Ini
+            int collectedCoins = powerUpManager != null ? powerUpManager.CoinsCollectedThisRace : 0;
+            GUI.backgroundColor = new Color(1f, 0.8f, 0.2f);
+            GUI.Box(new Rect(15, 68, 175, 30), $"🪙 Koin: +{collectedCoins}", badgeStyle);
+            GUI.backgroundColor = Color.white;
+
+            // Indikator Power-Up Aktif
+            float powerUpY = 104;
+            if (powerUpManager != null)
+            {
+                if (powerUpManager.IsSpeedBoosting)
+                {
+                    GUI.backgroundColor = new Color(0.0f, 0.95f, 1.0f);
+                    GUI.Box(new Rect(15, powerUpY, 215, 28), $"⚡ SPEED BOOST: {powerUpManager.SpeedBoostRemaining:F1}s", badgeStyle);
+                    powerUpY += 32;
+                }
+
+                if (powerUpManager.HasShield)
+                {
+                    GUI.backgroundColor = new Color(0.1f, 1.0f, 0.5f);
+                    GUI.Box(new Rect(15, powerUpY, 175, 28), "🛡️ PERISAI AKTIF", badgeStyle);
+                    powerUpY += 32;
+                }
+
+                if (powerUpManager.IsMagnetActive)
+                {
+                    GUI.backgroundColor = new Color(0.9f, 0.2f, 1.0f);
+                    GUI.Box(new Rect(15, powerUpY, 205, 28), $"🧲 MAGNET: {powerUpManager.MagnetRemaining:F1}s", badgeStyle);
+                    powerUpY += 32;
+                }
+            }
+            GUI.backgroundColor = Color.white;
+
             // Progress Bar Lintasan
             float barW = Mathf.Min(350, screenW - 290);
             GUI.Box(new Rect(screenW - barW - 15, 15, barW, 20), "");
@@ -413,9 +550,32 @@ namespace GameBalap.UI
             GUI.Label(new Rect(screenW - barW - 15, 36, barW, 20), $"Jarak Tempuh: {(currentProgress * 100f):F0}% | Kec: {currentSpeed:F1} m/s", subHeaderStyle);
 
             // Petunjuk Kontrol di bagian bawah layar
-            string helpText = "Kontrol: <b>[A/D]</b> atau <b>Swipe Kiri/Kanan</b> ganti jalur | <b>[W/Space]</b> atau <b>Swipe Atas</b> lompat | <b>[S]</b> atau <b>Swipe Bawah</b> slide";
+            string helpText = "Kontrol: <b>[A/D]</b> atau <b>Swipe Kiri/Kanan</b> ganti jalur | <b>[W/Space]</b> lompat | <b>[S]</b> slide";
             GUI.Box(new Rect(15, Screen.height - 40, screenW - 30, 30), "", cardStyle);
             GUI.Label(new Rect(20, Screen.height - 38, screenW - 40, 25), helpText, subHeaderStyle);
+        }
+
+        private void DrawFloatingCoins()
+        {
+            Camera cam = Camera.main;
+            if (cam == null || floatingCoins.Count == 0) return;
+
+            foreach (var item in floatingCoins)
+            {
+                Vector3 screenPos = cam.WorldToScreenPoint(item.worldPos);
+                if (screenPos.z > 0)
+                {
+                    // GUI Y berbanding terbalik dengan Screen Y
+                    float guiY = Screen.height - screenPos.y;
+                    float progress = 1f - (item.timer / item.maxTime);
+                    guiY -= progress * 50f; // Melayang ke atas
+
+                    Color oldColor = GUI.color;
+                    GUI.color = new Color(1.0f, 0.85f, 0.1f, item.timer / item.maxTime);
+                    GUI.Label(new Rect(screenPos.x - 75, guiY - 15, 150, 30), item.text, floatingTextStyle);
+                    GUI.color = oldColor;
+                }
+            }
         }
 
         private void DrawResultUI()
@@ -453,7 +613,7 @@ namespace GameBalap.UI
                 {
                     GUILayout.Label($"⏱️ Waktu Anda: <b>{lastResult.playerTime:F2} detik</b>");
                     GUILayout.Label($"⏱️ Waktu Lawan: <b>{lastResult.opponentTime:F2} detik</b>");
-                    GUILayout.Label($"🛡️ Status Validasi Server: <color=#88FF88>{lastResult.validationToken}</color>");
+                    GUILayout.Label($"🛡️ Status Validasi: <color=#88FF88>{lastResult.validationToken}</color>");
                 }
                 GUILayout.EndVertical();
 
@@ -515,6 +675,148 @@ namespace GameBalap.UI
             lastResult = null;
             yield return null;
             raceManager?.ResetToLobby();
+        }
+
+        private void DrawShopModal()
+        {
+            int screenW = Screen.width;
+            int screenH = Screen.height;
+
+            GUI.DrawTexture(new Rect(0, 0, screenW, screenH), darkOverlayTex);
+
+            float w = Mathf.Min(560, screenW - 20);
+            float h = Mathf.Min(520, screenH - 30);
+            float x = (screenW - w) * 0.5f;
+            float y = (screenH - h) * 0.5f;
+
+            GUI.Box(new Rect(x, y, w, h), "", cardStyle);
+            GUILayout.BeginArea(new Rect(x + 20, y + 15, w - 40, h - 30));
+            {
+                // Header
+                GUILayout.BeginHorizontal();
+                {
+                    GUILayout.Label("🛒 TOKO KUSTOMISASI & UPGRADE", headerStyle);
+                    if (GUILayout.Button("✕", GUILayout.Width(35), GUILayout.Height(30)))
+                    {
+                        showShopModal = false;
+                    }
+                }
+                GUILayout.EndHorizontal();
+
+                // Balance
+                GUILayout.Label($"Saldo Koin Anda: <b><color=#FFD700>{walletManager?.CurrentBalance:N0} Coins</color></b>", subHeaderStyle);
+                GUILayout.Space(6);
+
+                // Kategori Tabs
+                GUILayout.BeginHorizontal();
+                {
+                    GUI.backgroundColor = selectedShopTab == ShopCategory.Skins ? Color.cyan : Color.gray;
+                    if (GUILayout.Button("🥋 Karakter (Skins)", buttonStyle, GUILayout.Height(32)))
+                    {
+                        selectedShopTab = ShopCategory.Skins;
+                    }
+
+                    GUI.backgroundColor = selectedShopTab == ShopCategory.Trails ? Color.cyan : Color.gray;
+                    if (GUILayout.Button("✨ Jejak (Trails)", buttonStyle, GUILayout.Height(32)))
+                    {
+                        selectedShopTab = ShopCategory.Trails;
+                    }
+
+                    GUI.backgroundColor = selectedShopTab == ShopCategory.Upgrades ? Color.cyan : Color.gray;
+                    if (GUILayout.Button("⚡ Status Upgrades", buttonStyle, GUILayout.Height(32)))
+                    {
+                        selectedShopTab = ShopCategory.Upgrades;
+                    }
+                    GUI.backgroundColor = Color.white;
+                }
+                GUILayout.EndHorizontal();
+                GUILayout.Space(8);
+
+                // Item List
+                shopScrollPos = GUILayout.BeginScrollView(shopScrollPos, GUI.skin.box);
+                {
+                    var shop = ShopManager.Instance;
+                    if (shop != null)
+                    {
+                        foreach (var item in shop.Catalog)
+                        {
+                            if (item.category != selectedShopTab) continue;
+
+                            bool isUnlocked = shop.IsItemUnlocked(item.id);
+                            bool isEquipped = shop.IsItemEquipped(item.id);
+
+                            GUILayout.BeginVertical(GUI.skin.box);
+                            {
+                                GUILayout.BeginHorizontal();
+                                {
+                                    GUILayout.BeginVertical();
+                                    {
+                                        GUILayout.Label($"<b>{item.name}</b>", headerStyle);
+                                        GUILayout.Label(item.description, subHeaderStyle);
+                                    }
+                                    GUILayout.EndVertical();
+
+                                    GUILayout.Space(10);
+
+                                    // Action Area (Beli / Gunakan / Dipakai)
+                                    if (isUnlocked)
+                                    {
+                                        if (item.category == ShopCategory.Upgrades)
+                                        {
+                                            GUI.color = new Color(0.2f, 1.0f, 0.4f);
+                                            GUILayout.Label("<b>✓ AKTIF</b>", subHeaderStyle, GUILayout.Width(100));
+                                            GUI.color = Color.white;
+                                        }
+                                        else if (isEquipped)
+                                        {
+                                            GUI.color = Color.yellow;
+                                            GUILayout.Label("<b>★ DIPAKAI</b>", subHeaderStyle, GUILayout.Width(100));
+                                            GUI.color = Color.white;
+                                        }
+                                        else
+                                        {
+                                            GUI.backgroundColor = new Color(0.2f, 0.8f, 0.3f);
+                                            if (GUILayout.Button("Gunakan", buttonStyle, GUILayout.Width(100), GUILayout.Height(35)))
+                                            {
+                                                shop.EquipItem(item.id);
+                                                ShowAlert($"Kostum '{item.name}' berhasil dipakai!");
+                                            }
+                                            GUI.backgroundColor = Color.white;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        GUI.backgroundColor = new Color(1.0f, 0.75f, 0.1f);
+                                        if (GUILayout.Button($"Beli\n{item.price} 💰", buttonStyle, GUILayout.Width(100), GUILayout.Height(35)))
+                                        {
+                                            if (shop.TryPurchaseItem(item.id, out string err))
+                                            {
+                                                ShowAlert($"Selamat! Anda berhasil membeli '{item.name}'!");
+                                            }
+                                            else
+                                            {
+                                                ShowAlert(err);
+                                            }
+                                        }
+                                        GUI.backgroundColor = Color.white;
+                                    }
+                                }
+                                GUILayout.EndHorizontal();
+                            }
+                            GUILayout.EndVertical();
+                            GUILayout.Space(4);
+                        }
+                    }
+                }
+                GUILayout.EndScrollView();
+
+                GUILayout.Space(8);
+                if (GUILayout.Button("Tutup Toko", buttonStyle, GUILayout.Height(36)))
+                {
+                    showShopModal = false;
+                }
+            }
+            GUILayout.EndArea();
         }
 
         private void DrawTransactionHistoryModal()

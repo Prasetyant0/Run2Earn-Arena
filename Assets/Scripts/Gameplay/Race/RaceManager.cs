@@ -8,6 +8,7 @@ using GameBalap.Auth;
 using GameBalap.Gameplay.Player;
 using GameBalap.Gameplay.AI;
 using GameBalap.NetworkValidation;
+using GameBalap.Audio;
 
 namespace GameBalap.Gameplay.Race
 {
@@ -213,6 +214,16 @@ namespace GameBalap.Gameplay.Race
             // Simulasi pencarian lawan 1.5 detik
             yield return new WaitForSeconds(1.5f);
 
+            // Terapkan Tema Lingkungan Berdasarkan Tier (Bronze: Cyberpunk, Silver: Desert, Gold: Volcanic)
+            EnvironmentTheme theme = currentTier == RaceTier.Bronze 
+                ? EnvironmentTheme.CyberpunkNeon 
+                : (currentTier == RaceTier.Silver ? EnvironmentTheme.DesertDune : EnvironmentTheme.VolcanicMagma);
+
+            if (TrackThemeManager.Instance != null)
+            {
+                TrackThemeManager.Instance.ApplyTheme(theme);
+            }
+
             // Setup Track & Posisi Start
             trackGenerator.GenerateTrack();
             SubscribeToTrackEvents();
@@ -253,6 +264,8 @@ namespace GameBalap.Gameplay.Race
             raceStartTime = Time.time;
             OnRaceStateChanged?.Invoke(currentState);
 
+            AudioManager.Instance?.StartRaceBGM();
+
             player.StartRacing();
             opponentAI.StartRacing();
         }
@@ -261,12 +274,18 @@ namespace GameBalap.Gameplay.Race
         {
             currentState = RaceState.Finished;
             OnRaceStateChanged?.Invoke(currentState);
+            AudioManager.Instance?.StopRaceBGM();
 
             yield return new WaitForSeconds(0.8f);
 
             // Tentukan apakah pemain menang (Juara 1)
             int finalRank = isOpponentFinished && opponentFinishTime < playerFinishTime ? 2 : 1;
             bool isWinner = (finalRank == 1);
+
+            if (isWinner)
+            {
+                AudioManager.Instance?.PlayVictory();
+            }
 
             // 1. Validasi server-side / anti-cheat logic
             var validation = RaceValidationService.Instance.ValidateRace(

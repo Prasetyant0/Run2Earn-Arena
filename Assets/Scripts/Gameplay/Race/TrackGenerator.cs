@@ -18,6 +18,7 @@ namespace GameBalap.Gameplay.Race
 
         private readonly List<GameObject> activeSegments = new List<GameObject>();
         private GameObject finishStadiumArea;
+        private TrackThemeConfig currentThemeConfig;
 
         public float TotalTrackDistance => totalSegments * segmentLength;
         public FinishLine CurrentFinishLine => spawnedFinishLine;
@@ -26,6 +27,11 @@ namespace GameBalap.Gameplay.Race
         public void GenerateTrack()
         {
             ClearTrack();
+
+            // Ambil tema aktif atau fallback ke Cyberpunk
+            currentThemeConfig = TrackThemeManager.Instance != null 
+                ? TrackThemeManager.Instance.ActiveConfig 
+                : TrackThemeConfig.GetPreset(EnvironmentTheme.CyberpunkNeon);
 
             int checkpointCounter = 0;
 
@@ -40,8 +46,11 @@ namespace GameBalap.Gameplay.Race
                 segmentObj.transform.SetParent(transform, false);
                 segmentObj.transform.position = new Vector3(0, 0, zPos);
 
-                // Buat bidang jalan aspal & pembatas neon
+                // Buat bidang jalan aspal & pembatas neon sesuai tema
                 CreateSegmentGround(segmentObj, segmentLength, isStart);
+
+                // Tambahkan dekorasi pemandangan tematik di samping lintasan (Gedung Cyber / Obelisk Gurun / Spire Magma)
+                TrackThemeManager.Instance?.SpawnThematicScenery(segmentObj.transform, segmentLength);
 
                 // Tambahkan gantry distance marker
                 if (i > 0 && i % 4 == 0 && !isFinish)
@@ -71,17 +80,16 @@ namespace GameBalap.Gameplay.Race
             }
 
             // Buat Area Selebrasi Finish / Grandstand yang Luas & Tertutup
-            // Sehingga pemain dan bot memiliki landasan aman untuk deselerasi dan TIDAK BISA JATUH
             CreateFinishCelebrationStadium(totalSegments * segmentLength);
 
-            Debug.Log($"[TrackGenerator] Track balap 3D berhasil di-generate. Panjang lintasan: {TotalTrackDistance}m ({totalSegments} segmen + Stadium Finish).");
+            Debug.Log($"[TrackGenerator] Track balap 3D berhasil di-generate. Tema: {currentThemeConfig.themeName}. Panjang: {TotalTrackDistance}m.");
         }
 
         private void CreateSegmentGround(GameObject parent, float length, bool isStart)
         {
             float totalWidth = GameConstants.LANE_WIDTH * 3f + 1.8f;
 
-            // 1. Aspal Jalan Utama
+            // 1. Permukaan Jalan Utama (Disesuaikan Warna Tema)
             GameObject road = GameObject.CreatePrimitive(PrimitiveType.Cube);
             road.name = "RoadGround";
             road.transform.SetParent(parent.transform, false);
@@ -89,20 +97,16 @@ namespace GameBalap.Gameplay.Race
             road.transform.localScale = new Vector3(totalWidth, 0.5f, length);
 
             var rend = road.GetComponent<MeshRenderer>();
-            Material mat = trackMaterial != null ? trackMaterial : new Material(Shader.Find("Standard"));
-            if (trackMaterial == null)
-            {
-                mat.color = new Color(0.14f, 0.15f, 0.18f); // Aspal gelap sporty
-            }
+            Material mat = trackMaterial != null ? trackMaterial : currentThemeConfig.CreateMat("RoadThemeMat", currentThemeConfig.roadColor);
             rend.material = mat;
 
-            // 2. Garis Pembatas Jalur Putih/Kuning
+            // 2. Garis Pembatas Jalur
             CreateLaneDivider(parent, -GameConstants.LANE_WIDTH * 0.5f, length);
             CreateLaneDivider(parent, GameConstants.LANE_WIDTH * 0.5f, length);
 
-            // 3. Neon Railings Samping (Kiri: Cyan, Kanan: Magenta)
-            CreateNeonRail(parent, -totalWidth * 0.5f, length, new Color(0f, 0.95f, 1f));
-            CreateNeonRail(parent, totalWidth * 0.5f, length, new Color(1f, 0.1f, 0.6f));
+            // 3. Neon Railings Samping dengan Efek Emissive Bloom
+            CreateNeonRail(parent, -totalWidth * 0.5f, length, currentThemeConfig.leftNeonColor);
+            CreateNeonRail(parent, totalWidth * 0.5f, length, currentThemeConfig.rightNeonColor);
 
             // Jika segmen awal, buat Gerbang Start
             if (isStart)
@@ -120,8 +124,8 @@ namespace GameBalap.Gameplay.Race
             float w = GameConstants.LANE_WIDTH * 3.6f;
 
             // Tiang Kiri & Kanan
-            CreateGatePillar(startGate, new Vector3(-w * 0.5f, 2.5f, 0), new Vector3(0.6f, 5.2f, 0.6f), new Color(0.2f, 0.7f, 1f));
-            CreateGatePillar(startGate, new Vector3(w * 0.5f, 2.5f, 0), new Vector3(0.6f, 5.2f, 0.6f), new Color(0.2f, 0.7f, 1f));
+            CreateGatePillar(startGate, new Vector3(-w * 0.5f, 2.5f, 0), new Vector3(0.6f, 5.2f, 0.6f), currentThemeConfig.leftNeonColor);
+            CreateGatePillar(startGate, new Vector3(w * 0.5f, 2.5f, 0), new Vector3(0.6f, 5.2f, 0.6f), currentThemeConfig.rightNeonColor);
 
             // Palang Atas START
             GameObject crossBar = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -131,11 +135,10 @@ namespace GameBalap.Gameplay.Race
             crossBar.transform.localScale = new Vector3(w + 0.8f, 1.0f, 0.7f);
             Destroy(crossBar.GetComponent<Collider>());
 
-            Material barMat = new Material(Shader.Find("Standard"));
-            barMat.color = new Color(0.1f, 0.5f, 0.95f);
+            Material barMat = currentThemeConfig.CreateMat("StartBarMat", currentThemeConfig.curbColor);
             crossBar.GetComponent<MeshRenderer>().material = barMat;
 
-            // Lampu Sinyal Start (Merah, Kuning, Hijau)
+            // Lampu Sinyal Start Emissive (Merah, Kuning, Hijau)
             CreateSignalLight(crossBar, new Vector3(-1.2f, 0, 0.4f), Color.red);
             CreateSignalLight(crossBar, new Vector3(0, 0, 0.4f), Color.yellow);
             CreateSignalLight(crossBar, new Vector3(1.2f, 0, 0.4f), Color.green);
@@ -149,8 +152,7 @@ namespace GameBalap.Gameplay.Race
             bulb.transform.localScale = new Vector3(0.35f, 0.35f, 0.2f);
             Destroy(bulb.GetComponent<Collider>());
 
-            Material m = new Material(Shader.Find("Standard"));
-            m.color = col;
+            Material m = currentThemeConfig.CreateEmissiveMat("SignalLightMat", col, 3.0f);
             bulb.GetComponent<MeshRenderer>().material = m;
         }
 
@@ -161,8 +163,8 @@ namespace GameBalap.Gameplay.Race
             arch.transform.localPosition = new Vector3(0, 0, localZ);
 
             float w = GameConstants.LANE_WIDTH * 3.4f;
-            CreateGatePillar(arch, new Vector3(-w * 0.5f, 2.2f, 0), new Vector3(0.4f, 4.5f, 0.4f), new Color(0.3f, 0.35f, 0.4f));
-            CreateGatePillar(arch, new Vector3(w * 0.5f, 2.2f, 0), new Vector3(0.4f, 4.5f, 0.4f), new Color(0.3f, 0.35f, 0.4f));
+            CreateGatePillar(arch, new Vector3(-w * 0.5f, 2.2f, 0), new Vector3(0.4f, 4.5f, 0.4f), currentThemeConfig.curbColor);
+            CreateGatePillar(arch, new Vector3(w * 0.5f, 2.2f, 0), new Vector3(0.4f, 4.5f, 0.4f), currentThemeConfig.curbColor);
 
             GameObject banner = GameObject.CreatePrimitive(PrimitiveType.Cube);
             banner.transform.SetParent(arch.transform, false);
@@ -170,14 +172,12 @@ namespace GameBalap.Gameplay.Race
             banner.transform.localScale = new Vector3(w, 0.6f, 0.3f);
             Destroy(banner.GetComponent<Collider>());
 
-            Material m = new Material(Shader.Find("Standard"));
-            m.color = new Color(0.9f, 0.7f, 0.1f); // Kuning neon
+            Material m = currentThemeConfig.CreateEmissiveMat("GantryBannerMat", currentThemeConfig.leftNeonColor, 2.5f);
             banner.GetComponent<MeshRenderer>().material = m;
         }
 
         private void CreateLaneDivider(GameObject parent, float xPos, float length)
         {
-            // Buat garis strip putus-putus
             int stripeCount = (int)(length / 4f);
             for (int s = 0; s < stripeCount; s++)
             {
@@ -191,24 +191,23 @@ namespace GameBalap.Gameplay.Race
                 if (col != null) Destroy(col);
 
                 var rend = line.GetComponent<MeshRenderer>();
-                Material mat = laneLineMaterial != null ? laneLineMaterial : new Material(Shader.Find("Standard"));
-                if (laneLineMaterial == null) mat.color = new Color(0.95f, 0.95f, 0.95f);
+                Material mat = laneLineMaterial != null ? laneLineMaterial : currentThemeConfig.CreateEmissiveMat("LaneMarkMat", currentThemeConfig.laneMarkColor, 1.5f);
                 rend.material = mat;
             }
         }
 
         private void CreateNeonRail(GameObject parent, float xPos, float length, Color neonColor)
         {
-            // Rail Beton Bawah
+            // Rail Curb Bawah
             GameObject curb = GameObject.CreatePrimitive(PrimitiveType.Cube);
             curb.name = "SideCurb";
             curb.transform.SetParent(parent.transform, false);
             curb.transform.localPosition = new Vector3(xPos, 0.2f, length * 0.5f);
             curb.transform.localScale = new Vector3(0.45f, 0.5f, length);
-            Material curbMat = new Material(Shader.Find("Standard")) { color = new Color(0.2f, 0.22f, 0.26f) };
+            Material curbMat = currentThemeConfig.CreateMat("CurbMat", currentThemeConfig.curbColor);
             curb.GetComponent<MeshRenderer>().material = curbMat;
 
-            // Strip Neon Menyala di Atas Curb
+            // Strip Neon Emissive Menyala di Atas Curb (Menghasilkan Efek Bloom)
             GameObject neon = GameObject.CreatePrimitive(PrimitiveType.Cube);
             neon.name = "NeonStrip";
             neon.transform.SetParent(curb.transform, false);
@@ -216,7 +215,7 @@ namespace GameBalap.Gameplay.Race
             neon.transform.localScale = new Vector3(0.8f, 0.25f, 1.0f);
             Destroy(neon.GetComponent<Collider>());
 
-            Material neonMat = new Material(Shader.Find("Standard")) { color = neonColor };
+            Material neonMat = currentThemeConfig.CreateEmissiveMat("EmissiveNeonMat", neonColor, 2.8f);
             neon.GetComponent<MeshRenderer>().material = neonMat;
         }
 
@@ -255,12 +254,11 @@ namespace GameBalap.Gameplay.Race
         {
             float w = GameConstants.LANE_WIDTH * 3.8f;
 
-            // Menara Kiri
-            CreateGatePillar(parent, new Vector3(-w * 0.5f, 3.2f, 0), new Vector3(0.8f, 6.5f, 0.8f), new Color(0.95f, 0.75f, 0.1f));
-            // Menara Kanan
-            CreateGatePillar(parent, new Vector3(w * 0.5f, 3.2f, 0), new Vector3(0.8f, 6.5f, 0.8f), new Color(0.95f, 0.75f, 0.1f));
+            // Menara Kiri & Kanan
+            CreateGatePillar(parent, new Vector3(-w * 0.5f, 3.2f, 0), new Vector3(0.8f, 6.5f, 0.8f), currentThemeConfig.leftNeonColor);
+            CreateGatePillar(parent, new Vector3(w * 0.5f, 3.2f, 0), new Vector3(0.8f, 6.5f, 0.8f), currentThemeConfig.rightNeonColor);
 
-            // Banner Utama "FINISH"
+            // Banner Utama "FINISH" dengan Warna Emas Berkilau
             GameObject arch = GameObject.CreatePrimitive(PrimitiveType.Cube);
             arch.name = "FinishCrossbar";
             arch.transform.SetParent(parent.transform, false);
@@ -268,7 +266,7 @@ namespace GameBalap.Gameplay.Race
             arch.transform.localScale = new Vector3(w + 1.2f, 1.4f, 0.8f);
             Destroy(arch.GetComponent<Collider>());
 
-            Material goldMat = new Material(Shader.Find("Standard")) { color = new Color(1.0f, 0.85f, 0.1f) };
+            Material goldMat = currentThemeConfig.CreateEmissiveMat("FinishGoldMat", new Color(1.0f, 0.85f, 0.1f), 2.0f);
             arch.GetComponent<MeshRenderer>().material = goldMat;
 
             // Garis Catur Hitam-Putih di Bawah Garis Finish
@@ -279,7 +277,7 @@ namespace GameBalap.Gameplay.Race
             checkeredFloor.transform.localScale = new Vector3(GameConstants.LANE_WIDTH * 3f + 1f, 0.05f, 2.5f);
             Destroy(checkeredFloor.GetComponent<Collider>());
 
-            Material checkMat = new Material(Shader.Find("Standard")) { color = Color.white };
+            Material checkMat = currentThemeConfig.CreateMat("CheckeredMat", Color.white);
             checkeredFloor.GetComponent<MeshRenderer>().material = checkMat;
         }
 
@@ -291,14 +289,10 @@ namespace GameBalap.Gameplay.Race
             pillar.transform.localScale = scale;
             Destroy(pillar.GetComponent<Collider>());
 
-            Material m = new Material(Shader.Find("Standard")) { color = col };
+            Material m = currentThemeConfig.CreateEmissiveMat("GatePillarMat", col, 2.2f);
             pillar.GetComponent<MeshRenderer>().material = m;
         }
 
-        /// <summary>
-        /// Area stadium finish yang luas (45 meter) setelah garis finish 
-        /// dengan dinding penahan kokoh agar pemain tidak jatuh ke ruang hampa.
-        /// </summary>
         private void CreateFinishCelebrationStadium(float startZ)
         {
             float stadiumLength = 48f;
@@ -315,7 +309,7 @@ namespace GameBalap.Gameplay.Race
             floor.transform.localPosition = new Vector3(0, -0.25f, stadiumLength * 0.5f);
             floor.transform.localScale = new Vector3(totalWidth, 0.5f, stadiumLength);
 
-            Material floorMat = new Material(Shader.Find("Standard")) { color = new Color(0.2f, 0.22f, 0.28f) };
+            Material floorMat = currentThemeConfig.CreateMat("StadiumFloorMat", currentThemeConfig.curbColor);
             floor.GetComponent<MeshRenderer>().material = floorMat;
 
             // 2. Karpet Merah Kemenangan di Tengah
@@ -326,21 +320,21 @@ namespace GameBalap.Gameplay.Race
             redCarpet.transform.localScale = new Vector3(GameConstants.LANE_WIDTH * 1.5f, 0.04f, stadiumLength);
             Destroy(redCarpet.GetComponent<Collider>());
 
-            Material redMat = new Material(Shader.Find("Standard")) { color = new Color(0.85f, 0.15f, 0.2f) };
+            Material redMat = currentThemeConfig.CreateEmissiveMat("VictoryCarpetMat", new Color(0.9f, 0.15f, 0.2f), 1.6f);
             redCarpet.GetComponent<MeshRenderer>().material = redMat;
 
             // 3. Tembok Kiri & Kanan Stadium
-            CreateStadiumWall(finishStadiumArea, new Vector3(-totalWidth * 0.5f, 2f, stadiumLength * 0.5f), new Vector3(0.6f, 4f, stadiumLength), Color.cyan);
-            CreateStadiumWall(finishStadiumArea, new Vector3(totalWidth * 0.5f, 2f, stadiumLength * 0.5f), new Vector3(0.6f, 4f, stadiumLength), Color.magenta);
+            CreateStadiumWall(finishStadiumArea, new Vector3(-totalWidth * 0.5f, 2f, stadiumLength * 0.5f), new Vector3(0.6f, 4f, stadiumLength), currentThemeConfig.leftNeonColor);
+            CreateStadiumWall(finishStadiumArea, new Vector3(totalWidth * 0.5f, 2f, stadiumLength * 0.5f), new Vector3(0.6f, 4f, stadiumLength), currentThemeConfig.rightNeonColor);
 
-            // 4. TEMBOK PENAHAN AKHIR (Pemain TIDAK AKAN PERNAH JATUH!)
+            // 4. Tembok Penahan Akhir Kokoh
             GameObject endWall = GameObject.CreatePrimitive(PrimitiveType.Cube);
             endWall.name = "EndSolidWall";
             endWall.transform.SetParent(finishStadiumArea.transform, false);
             endWall.transform.localPosition = new Vector3(0, 2.5f, stadiumLength);
             endWall.transform.localScale = new Vector3(totalWidth + 1f, 5.5f, 1.2f);
 
-            Material endWallMat = new Material(Shader.Find("Standard")) { color = new Color(0.95f, 0.8f, 0.1f) };
+            Material endWallMat = currentThemeConfig.CreateMat("EndWallMat", currentThemeConfig.roadColor);
             endWall.GetComponent<MeshRenderer>().material = endWallMat;
 
             // Banner Selebrasi Kemenangan di Dinding Akhir
@@ -351,7 +345,7 @@ namespace GameBalap.Gameplay.Race
             banner.transform.localScale = new Vector3(0.85f, 0.5f, 0.1f);
             Destroy(banner.GetComponent<Collider>());
 
-            Material bannerMat = new Material(Shader.Find("Standard")) { color = new Color(0.1f, 0.6f, 1.0f) };
+            Material bannerMat = currentThemeConfig.CreateEmissiveMat("VictoryBannerMat", currentThemeConfig.leftNeonColor, 2.5f);
             banner.GetComponent<MeshRenderer>().material = bannerMat;
         }
 
@@ -363,7 +357,7 @@ namespace GameBalap.Gameplay.Race
             wall.transform.localPosition = pos;
             wall.transform.localScale = scale;
 
-            Material mat = new Material(Shader.Find("Standard")) { color = accentCol * 0.7f };
+            Material mat = currentThemeConfig.CreateEmissiveMat("StadiumWallMat", accentCol, 1.8f);
             wall.GetComponent<MeshRenderer>().material = mat;
         }
 

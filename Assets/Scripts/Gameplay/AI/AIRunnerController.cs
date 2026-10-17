@@ -52,6 +52,12 @@ namespace GameBalap.Gameplay.AI
                 characterAnimator = gameObject.AddComponent<BlockyCharacterAnimator>();
             }
             characterAnimator.SetupCharacter(asRival: true);
+
+            var particles = GetComponent<RunnerParticleEffects>();
+            if (particles == null)
+            {
+                gameObject.AddComponent<RunnerParticleEffects>();
+            }
         }
 
         private void Update()
@@ -123,7 +129,7 @@ namespace GameBalap.Gameplay.AI
             // Sensor deteksi rintangan di depan jalur saat ini
             DetectAndReactToObstacles();
 
-            characterAnimator?.UpdateAnimation(currentState, currentSpeed);
+            characterAnimator?.UpdateAnimation(currentState, currentSpeed, moveVector.x);
         }
 
         private void DetectAndReactToObstacles()

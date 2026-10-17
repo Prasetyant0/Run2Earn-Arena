@@ -161,6 +161,35 @@ namespace GameBalap.Economy
         }
 
         /// <summary>
+        /// Menambahkan koin virtual (misal dari pengambilan koin di lintasan balap).
+        /// </summary>
+        public void AddCoins(int amount, string description = "Koin Diambil di Lintasan")
+        {
+            if (amount <= 0) return;
+            currentBalance += amount;
+            RecordTransaction(TransactionType.TrackCoinPickup, amount, description);
+            Debug.Log($"[WalletManager] Koin bertambah: +{amount}. Saldo: {currentBalance}.");
+        }
+
+        /// <summary>
+        /// Mengurangi koin untuk pembelian di Toko Kustomisasi (Skins, Trails, Upgrades).
+        /// </summary>
+        public bool TrySpendCoins(int amount, string description, out string errorMessage)
+        {
+            if (currentBalance < amount)
+            {
+                errorMessage = $"Saldo koin tidak mencukupi! Butuh {amount} koin, saldo Anda {currentBalance} koin.";
+                return false;
+            }
+
+            currentBalance -= amount;
+            errorMessage = string.Empty;
+            RecordTransaction(TransactionType.ShopPurchase, -amount, description);
+            Debug.Log($"[WalletManager] Koin dibelanjakan: -{amount}. Sisa saldo: {currentBalance}.");
+            return true;
+        }
+
+        /// <summary>
         /// Fitur testing: Tambah koin gratis untuk mencoba berbagai tier balapan.
         /// </summary>
         public void AddTestingFaucet(int amount = GameConstants.FAUCET_TEST_AMOUNT)

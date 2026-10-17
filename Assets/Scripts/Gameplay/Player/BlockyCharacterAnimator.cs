@@ -5,16 +5,16 @@ namespace GameBalap.Gameplay.Player
 {
     /// <summary>
     /// Membangun model karakter 3D bergaya balok (Roblox / Minecraft style) secara prosedural
-    /// dan menggerakkan animasi anggota tubuh (tangan & kaki berayun, kepala bergoyang, pose lompat/slide).
+    /// dan menggerakkan animasi dinamis (lari atletis, kemiringan badan saat belok, squash & stretch lompat/mendarat, slide keren).
     /// </summary>
     public class BlockyCharacterAnimator : MonoBehaviour
     {
         [Header("Appearance Colors")]
-        [SerializeField] private Color skinColor = new Color(0.98f, 0.82f, 0.68f); // Warna kulit cerah
-        [SerializeField] private Color shirtColor = new Color(0.12f, 0.55f, 0.95f); // Jersey lari
-        [SerializeField] private Color pantsColor = new Color(0.15f, 0.18f, 0.25f); // Celana sporty gelap
-        [SerializeField] private Color hairColor = new Color(0.25f, 0.15f, 0.08f);  // Rambut cokelat gelap
-        [SerializeField] private Color shoeColor = new Color(0.95f, 0.95f, 0.95f);  // Sepatu sneakers putih
+        [SerializeField] private Color skinColor = new Color(0.98f, 0.82f, 0.68f);
+        [SerializeField] private Color shirtColor = new Color(0.12f, 0.55f, 0.95f);
+        [SerializeField] private Color pantsColor = new Color(0.15f, 0.18f, 0.25f);
+        [SerializeField] private Color hairColor = new Color(0.25f, 0.15f, 0.08f);
+        [SerializeField] private Color shoeColor = new Color(0.95f, 0.95f, 0.95f);
         [SerializeField] private bool isRival = false;
 
         // Limbs Transforms
@@ -26,10 +26,13 @@ namespace GameBalap.Gameplay.Player
         private Transform leftLegPivot;
         private Transform rightLegPivot;
 
-        // Runtime animation state
+        // Dynamic State
         private CharacterMovementState currentState = CharacterMovementState.Running;
         private float runSpeedFactor = 1f;
         private float animTimer = 0f;
+        private float currentLeanAngle = 0f;
+        private float targetLeanAngle = 0f;
+        private Vector3 currentScale = Vector3.one;
 
         public void SetupCharacter(bool asRival)
         {
@@ -44,19 +47,27 @@ namespace GameBalap.Gameplay.Player
             BuildBlockyHumanoid();
         }
 
+        public void ApplySkinColors(Color shirt, Color pants, Color hair, Color skin, Color shoes)
+        {
+            this.shirtColor = shirt;
+            this.pantsColor = pants;
+            this.hairColor = hair;
+            this.skinColor = skin;
+            this.shoeColor = shoes;
+
+            BuildBlockyHumanoid();
+        }
+
         private void BuildBlockyHumanoid()
         {
-            // Bersihkan visual lama jika ada
             Transform existing = transform.Find("BlockyModelRoot");
             if (existing != null) DestroyImmediate(existing.gameObject);
 
-            // Root Container
             GameObject rootObj = new GameObject("BlockyModelRoot");
             rootObj.transform.SetParent(transform, false);
             rootObj.transform.localPosition = Vector3.zero;
             modelRoot = rootObj.transform;
 
-            // Material Shared
             Material skinMat = CreateMat("SkinMat", skinColor);
             Material shirtMat = CreateMat("ShirtMat", shirtColor);
             Material pantsMat = CreateMat("PantsMat", pantsColor);
@@ -65,7 +76,7 @@ namespace GameBalap.Gameplay.Player
             Material eyeMat = CreateMat("EyeMat", Color.black);
             Material headbandMat = CreateMat("HeadbandMat", isRival ? Color.yellow : Color.cyan);
 
-            // 1. TORSO (Badan Utama)
+            // 1. TORSO (Badan Utama Atletis)
             GameObject torsoObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
             torsoObj.name = "Torso";
             torsoObj.transform.SetParent(modelRoot, false);
@@ -103,7 +114,7 @@ namespace GameBalap.Gameplay.Player
             StripCollider(hair);
             hair.GetComponent<MeshRenderer>().material = hairMat;
 
-            // Headband / Ikat Kepala Sporty
+            // Headband Sporty
             GameObject headband = GameObject.CreatePrimitive(PrimitiveType.Cube);
             headband.name = "Headband";
             headband.transform.SetParent(head, false);
@@ -116,19 +127,17 @@ namespace GameBalap.Gameplay.Player
             CreateFacialFeature(head, new Vector3(-0.16f, -0.02f, 0.52f), new Vector3(0.12f, 0.16f, 0.05f), eyeMat);
             CreateFacialFeature(head, new Vector3(0.16f, -0.02f, 0.52f), new Vector3(0.12f, 0.16f, 0.05f), eyeMat);
 
-            // 3. TANGAN KIRI (Left Arm Pivot di Bahu)
+            // 3. TANGAN KIRI & KANAN (Pivot di Bahu)
             leftArmPivot = CreateLimb(modelRoot, "LeftArmPivot", new Vector3(-0.55f, 1.55f, 0),
                 new Vector3(0, -0.42f, 0), new Vector3(0.28f, 0.85f, 0.32f), shirtMat, skinMat);
 
-            // 4. TANGAN KANAN (Right Arm Pivot di Bahu)
             rightArmPivot = CreateLimb(modelRoot, "RightArmPivot", new Vector3(0.55f, 1.55f, 0),
                 new Vector3(0, -0.42f, 0), new Vector3(0.28f, 0.85f, 0.32f), shirtMat, skinMat);
 
-            // 5. KAKI KIRI (Left Leg Pivot di Pinggul)
+            // 4. KAKI KIRI & KANAN (Pivot di Pinggul)
             leftLegPivot = CreateLimb(modelRoot, "LeftLegPivot", new Vector3(-0.20f, 0.75f, 0),
                 new Vector3(0, -0.38f, 0), new Vector3(0.30f, 0.75f, 0.34f), pantsMat, shoeMat);
 
-            // 6. KAKI KANAN (Right Leg Pivot di Pinggul)
             rightLegPivot = CreateLimb(modelRoot, "RightLegPivot", new Vector3(0.20f, 0.75f, 0),
                 new Vector3(0, -0.38f, 0), new Vector3(0.30f, 0.75f, 0.34f), pantsMat, shoeMat);
         }
@@ -139,7 +148,6 @@ namespace GameBalap.Gameplay.Player
             pivot.transform.SetParent(parent, false);
             pivot.transform.localPosition = pivotPos;
 
-            // Mesh Anggota Tubuh
             GameObject limbMesh = GameObject.CreatePrimitive(PrimitiveType.Cube);
             limbMesh.name = "Mesh";
             limbMesh.transform.SetParent(pivot.transform, false);
@@ -148,7 +156,6 @@ namespace GameBalap.Gameplay.Player
             StripCollider(limbMesh);
             limbMesh.GetComponent<MeshRenderer>().material = topMat;
 
-            // Bagian Bawah (Ujung Tangan / Sepatu Kaki)
             GameObject botLimb = GameObject.CreatePrimitive(PrimitiveType.Cube);
             botLimb.name = "LowerPart";
             botLimb.transform.SetParent(limbMesh.transform, false);
@@ -172,12 +179,11 @@ namespace GameBalap.Gameplay.Player
 
         private Material CreateMat(string name, Color col)
         {
-            Material mat = new Material(Shader.Find("Standard"))
+            return new Material(Shader.Find("Standard"))
             {
                 name = name,
                 color = col
             };
-            return mat;
         }
 
         private void StripCollider(GameObject obj)
@@ -186,17 +192,23 @@ namespace GameBalap.Gameplay.Player
             if (col != null) DestroyImmediate(col);
         }
 
-        public void UpdateAnimation(CharacterMovementState state, float speed)
+        public void UpdateAnimation(CharacterMovementState state, float speed, float horizontalDelta = 0f)
         {
             this.currentState = state;
             this.runSpeedFactor = Mathf.Max(0.5f, speed / GameConstants.DEFAULT_RUN_SPEED);
+
+            // Hitung kemiringan badan saat berpindah jalur (Bank Angle)
+            targetLeanAngle = Mathf.Clamp(-horizontalDelta * 2.8f, -18f, 18f);
         }
 
         private void Update()
         {
             if (modelRoot == null) return;
 
-            animTimer += Time.deltaTime * runSpeedFactor * 13f;
+            animTimer += Time.deltaTime * runSpeedFactor * 14f;
+
+            // Interpolasi halus kemiringan badan saat bermanuver belok
+            currentLeanAngle = Mathf.Lerp(currentLeanAngle, targetLeanAngle, Time.deltaTime * 12f);
 
             switch (currentState)
             {
@@ -216,71 +228,93 @@ namespace GameBalap.Gameplay.Player
                     AnimateVictory();
                     break;
             }
+
+            // Kembalikan scale squash & stretch ke normal secara elastis
+            modelRoot.localScale = Vector3.Lerp(modelRoot.localScale, currentScale, Time.deltaTime * 14f);
         }
 
         private void AnimateRunning()
         {
-            float legSwingAngle = Mathf.Sin(animTimer) * 42f;
-            float armSwingAngle = -legSwingAngle * 1.15f;
-            float torsoBob = Mathf.Abs(Mathf.Sin(animTimer * 2f)) * 0.08f;
+            currentScale = Vector3.one;
 
-            // Ayunan kaki
+            // Ayunan dinamis ekstrem dengan sudut 50 derajat
+            float legSwingAngle = Mathf.Sin(animTimer) * 50f;
+            float armSwingAngle = -legSwingAngle * 1.2f;
+            float torsoBob = Mathf.Abs(Mathf.Sin(animTimer * 2f)) * 0.1f;
+            float torsoTwist = Mathf.Sin(animTimer) * 12f; // Counter-rotation dada terhadap pinggul
+
             if (leftLegPivot != null) leftLegPivot.localRotation = Quaternion.Euler(legSwingAngle, 0, 0);
             if (rightLegPivot != null) rightLegPivot.localRotation = Quaternion.Euler(-legSwingAngle, 0, 0);
 
-            // Ayunan tangan (kebalikan dari kaki)
-            if (leftArmPivot != null) leftArmPivot.localRotation = Quaternion.Euler(armSwingAngle, 0, 0);
-            if (rightArmPivot != null) rightArmPivot.localRotation = Quaternion.Euler(-armSwingAngle, 0, 0);
+            // Ayunan lengan bersudut atletis
+            if (leftArmPivot != null) leftArmPivot.localRotation = Quaternion.Euler(armSwingAngle, 0, -8f);
+            if (rightArmPivot != null) rightArmPivot.localRotation = Quaternion.Euler(-armSwingAngle, 0, 8f);
 
-            // Goyangan badan & kepala (Bobbing lari)
-            if (torso != null) torso.localPosition = new Vector3(0, 1.15f + torsoBob, 0);
-            if (head != null) head.localRotation = Quaternion.Euler(torsoBob * 30f, Mathf.Sin(animTimer) * 3f, 0);
+            // Badan bergoyang atas-bawah dan memutar sedikit
+            if (torso != null)
+            {
+                torso.localPosition = new Vector3(0, 1.15f + torsoBob, 0);
+                torso.localRotation = Quaternion.Euler(0, torsoTwist, 0);
+            }
 
-            // Reset rotasi root
-            modelRoot.localRotation = Quaternion.Lerp(modelRoot.localRotation, Quaternion.identity, Time.deltaTime * 10f);
+            if (head != null)
+            {
+                head.localRotation = Quaternion.Euler(torsoBob * 35f, -torsoTwist * 0.6f, 0);
+            }
+
+            // Miringkan badan saat belok jalur
+            modelRoot.localRotation = Quaternion.Euler(0, 0, currentLeanAngle);
         }
 
         private void AnimateJumping()
         {
-            // Pose melompat: tangan terangkat ke atas, kaki menekuk ke belakang
-            if (leftArmPivot != null) leftArmPivot.localRotation = Quaternion.Euler(-135f, 0, -20f);
-            if (rightArmPivot != null) rightArmPivot.localRotation = Quaternion.Euler(-135f, 0, 20f);
-            if (leftLegPivot != null) leftLegPivot.localRotation = Quaternion.Euler(30f, 0, -10f);
-            if (rightLegPivot != null) rightLegPivot.localRotation = Quaternion.Euler(-15f, 0, 10f);
-            if (head != null) head.localRotation = Quaternion.Euler(-15f, 0, 0);
+            // Pose melompat (Stretch: badan memanjang sedikit ke atas)
+            currentScale = new Vector3(0.92f, 1.15f, 0.92f);
+
+            if (leftArmPivot != null) leftArmPivot.localRotation = Quaternion.Euler(-145f, 0, -25f);
+            if (rightArmPivot != null) rightArmPivot.localRotation = Quaternion.Euler(-145f, 0, 25f);
+            if (leftLegPivot != null) leftLegPivot.localRotation = Quaternion.Euler(35f, 0, -12f);
+            if (rightLegPivot != null) rightLegPivot.localRotation = Quaternion.Euler(-18f, 0, 12f);
+            if (head != null) head.localRotation = Quaternion.Euler(-18f, 0, 0);
+
+            modelRoot.localRotation = Quaternion.Euler(-8f, 0, currentLeanAngle);
         }
 
         private void AnimateSliding()
         {
-            // Pose slide: badan rebah ke belakang/bawah, kaki menjulur ke depan, tangan menopang
-            modelRoot.localRotation = Quaternion.Lerp(modelRoot.localRotation, Quaternion.Euler(-55f, 0, 0), Time.deltaTime * 14f);
-            if (leftArmPivot != null) leftArmPivot.localRotation = Quaternion.Euler(45f, 0, -30f);
-            if (rightArmPivot != null) rightArmPivot.localRotation = Quaternion.Euler(45f, 0, 30f);
-            if (leftLegPivot != null) leftLegPivot.localRotation = Quaternion.Euler(-30f, 0, 0);
-            if (rightLegPivot != null) rightLegPivot.localRotation = Quaternion.Euler(-30f, 0, 0);
+            // Pose slide: badan rebah dinamis, tangan kanan menyentuh aspal, kaki menjulur lurus
+            currentScale = new Vector3(1.08f, 0.75f, 1.08f);
+
+            modelRoot.localRotation = Quaternion.Lerp(modelRoot.localRotation, Quaternion.Euler(-60f, 0, 12f + currentLeanAngle), Time.deltaTime * 16f);
+            if (leftArmPivot != null) leftArmPivot.localRotation = Quaternion.Euler(30f, 0, -40f);
+            if (rightArmPivot != null) rightArmPivot.localRotation = Quaternion.Euler(60f, 0, 20f);
+            if (leftLegPivot != null) leftLegPivot.localRotation = Quaternion.Euler(-38f, 0, 0);
+            if (rightLegPivot != null) rightLegPivot.localRotation = Quaternion.Euler(-38f, 0, 0);
         }
 
         private void AnimateStumble()
         {
-            // Pose pusing/tersandung: goyang kiri kanan dengan cepat
-            float wobble = Mathf.Sin(Time.time * 24f) * 18f;
-            modelRoot.localRotation = Quaternion.Euler(15f, wobble, wobble * 0.8f);
-            if (head != null) head.localRotation = Quaternion.Euler(10f, -wobble * 1.5f, 0);
-            if (leftArmPivot != null) leftArmPivot.localRotation = Quaternion.Euler(-30f + wobble, 0, -45f);
-            if (rightArmPivot != null) rightArmPivot.localRotation = Quaternion.Euler(-30f - wobble, 0, 45f);
+            currentScale = Vector3.one;
+
+            float wobble = Mathf.Sin(Time.time * 26f) * 22f;
+            modelRoot.localRotation = Quaternion.Euler(18f, wobble, wobble * 0.9f);
+            if (head != null) head.localRotation = Quaternion.Euler(14f, -wobble * 1.8f, 0);
+            if (leftArmPivot != null) leftArmPivot.localRotation = Quaternion.Euler(-40f + wobble, 0, -50f);
+            if (rightArmPivot != null) rightArmPivot.localRotation = Quaternion.Euler(-40f - wobble, 0, 50f);
         }
 
         private void AnimateVictory()
         {
-            // Pose selebrasi finish: melompat kegirangan dan melambaikan kedua tangan
-            float wave = Mathf.Sin(Time.time * 8f) * 35f;
-            float jumpBob = Mathf.Abs(Mathf.Sin(Time.time * 6f)) * 0.25f;
+            currentScale = Vector3.one;
+
+            float wave = Mathf.Sin(Time.time * 8f) * 38f;
+            float jumpBob = Mathf.Abs(Mathf.Sin(Time.time * 6f)) * 0.28f;
 
             modelRoot.localPosition = new Vector3(0, jumpBob, 0);
             modelRoot.localRotation = Quaternion.identity;
 
-            if (leftArmPivot != null) leftArmPivot.localRotation = Quaternion.Euler(-160f + wave, 0, -25f);
-            if (rightArmPivot != null) rightArmPivot.localRotation = Quaternion.Euler(-160f - wave, 0, 25f);
+            if (leftArmPivot != null) leftArmPivot.localRotation = Quaternion.Euler(-165f + wave, 0, -25f);
+            if (rightArmPivot != null) rightArmPivot.localRotation = Quaternion.Euler(-165f - wave, 0, 25f);
             if (leftLegPivot != null) leftLegPivot.localRotation = Quaternion.identity;
             if (rightLegPivot != null) rightLegPivot.localRotation = Quaternion.identity;
             if (head != null) head.localRotation = Quaternion.Euler(-10f, Mathf.Sin(Time.time * 4f) * 15f, 0);
